@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"io/ioutil"
 	"net/http"
 	"strings"
 
@@ -18,6 +19,36 @@ import (
 //	@Example {"message": "Hello, World!"}
 type MessageRequest struct {
 	Message string `json:"message"`
+}
+
+// Credentials structure to hold username and password
+type Credentials struct {
+	Username string
+	Password string
+}
+
+// Global variable to hold credentials
+var validCredentials Credentials
+
+// LoadCredentials reads the username and password from a file
+func LoadCredentials(filePath string) error {
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	// Assuming credentials are in "username:password" format
+	parts := strings.TrimSpace(string(data))
+	credentialParts := strings.Split(parts, ":")
+	if len(credentialParts) != 2 {
+		return err
+	}
+
+	validCredentials = Credentials{
+		Username: credentialParts[0],
+		Password: credentialParts[1],
+	}
+	return nil
 }
 
 // @BasePath /api/v1
@@ -95,7 +126,7 @@ func validateBasicAuth(g *gin.Context) bool {
 		return false
 	}
 
-	// Here you can implement your own logic to validate the username and password
+	// Split the decoded string into username and password
 	credentials := strings.Split(string(decoded), ":")
 	if len(credentials) != 2 || !validateCredentials(credentials[0], credentials[1]) {
 		g.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
@@ -105,14 +136,20 @@ func validateBasicAuth(g *gin.Context) bool {
 	return true
 }
 
-// validateCredentials is a placeholder for your authentication logic
+// validateCredentials checks the provided username and password against the loaded credentials
 func validateCredentials(username, password string) bool {
-	// Replace this with your actual authentication logic
-	return username == "admin" && password == "password" // Example credentials
+	return username == validCredentials.Username && password == validCredentials.Password
 }
 
 func main() {
 	gin.SetMode(gin.ReleaseMode)
+
+	// Load credentials from file
+	err := LoadCredentials("credentials.txt")
+	if err != nil {
+		panic("Failed to load credentials: " + err.Error())
+	}
+
 	r := gin.Default()
 	docs.SwaggerInfo.BasePath = "/api/v1"
 	v1 := r.Group("/api/v1")
