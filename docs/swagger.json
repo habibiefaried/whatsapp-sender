@@ -61,7 +61,7 @@
                 "summary": "send message",
                 "parameters": [
                     {
-                        "description": "Input message",
+                        "description": "Input message and number",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -90,6 +90,9 @@
             "type": "object",
             "properties": {
                 "message": {
+                    "type": "string"
+                },
+                "number": {
                     "type": "string"
                 }
             }

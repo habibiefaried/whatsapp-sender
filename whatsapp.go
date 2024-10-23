@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 
 	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/whatsmeow"
@@ -26,29 +23,29 @@ func eventHandler(evt interface{}) {
 }
 
 // Function to send a message
-func sendMessage(client *whatsmeow.Client, recipient string, messageText string) {
+func sendMessageWA(client *whatsmeow.Client, recipient string, messageText string) error {
 	// Create a message
 	message := &waProto.Message{
 		Conversation: proto.String(messageText),
 	}
 
+	log.Println("Sending to " + recipient + " with message: " + messageText)
 	// Convert the recipient number into the correct WhatsApp format (JID)
 	jid, err := types.ParseJID(recipient)
 	if err != nil {
-		log.Println(err)
-		log.Fatalf("Invalid recipient JID: %s", recipient)
+		return err
 	}
 
 	// Send the message
 	_, err = client.SendMessage(context.Background(), jid, message)
 	if err != nil {
-		log.Fatalf("Failed to send message: %v", err)
+		return err
 	}
 
-	fmt.Println("Message sent successfully!")
+	return nil
 }
 
-func loginwhatsapp() {
+func LoginWhatsapp() *whatsmeow.Client {
 	// |------------------------------------------------------------------------------------------------------|
 	// | NOTE: You must also import the appropriate DB connector, e.g. github.com/mattn/go-sqlite3 for SQLite |
 	// |------------------------------------------------------------------------------------------------------|
@@ -92,12 +89,12 @@ func loginwhatsapp() {
 		}
 	}
 
-	// sendMessage(client, "62<x>@s.whatsapp.net", "Hello from Go using WhatsMeow!")
-
 	// Listen to Ctrl+C (you can also do something else that prevents the program from exiting)
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	<-c
+	// c := make(chan os.Signal, 1)
+	// signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	// <-c
 
-	client.Disconnect()
+	//
+
+	return client
 }

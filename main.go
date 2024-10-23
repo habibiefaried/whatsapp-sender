@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strings"
 
@@ -10,14 +12,17 @@ import (
 	docs "github.com/habibiefaried/whatsapp-sender/docs"
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"go.mau.fi/whatsmeow"
 )
 
 // MessageRequest represents the structure of the request body
 //
-//	@Description The message request body
-//	@Param message body MessageRequest true "Input message"
-//	@Example {"message": "Hello, World!"}
+//	@Description	The message request body
+//	@Param			number	body	string	true	"Recipient number"
+//	@Param			message	body	string	true	"Input message"
+//	@Example		{"number": "1234567890", "message": "Hello, World!"}
 type MessageRequest struct {
+	Number  string `json:"number"`
 	Message string `json:"message"`
 }
 
@@ -48,28 +53,29 @@ func LoadCredentials(filePath string) error {
 		Username: credentialParts[0],
 		Password: credentialParts[1],
 	}
+
 	return nil
 }
 
-// @BasePath /api/v1
+//	@BasePath	/api/v1
 
-// @securityDefinitions.basic BasicAuth
-// @Description Basic Auth
-// @Name Authorization
-// @In header
-// @Type basic
-// @Title Basic Auth
+//	@securityDefinitions.basic	BasicAuth
+//	@Description				Basic Auth
+//	@Name						Authorization
+//	@In							header
+//	@Type						basic
+//	@Title						Basic Auth
 
-// @Summary send message
+// @Summary	send message
 // @Schemes
-// @Description send message
-// @Accept json
-// @Produce json
-// @Param request body MessageRequest true "Input message"
-// @Success 200 {object} map[string]string
-// @Router /sendMessage [post]
-// @Security BasicAuth
-func SendMessage(g *gin.Context) {
+// @Description	send message
+// @Accept			json
+// @Produce		json
+// @Param			request	body		MessageRequest	true	"Input message and number"
+// @Success		200		{object}	map[string]string
+// @Router			/sendMessage [post]
+// @Security		BasicAuth
+func SendMessage(g *gin.Context, client *whatsmeow.Client) {
 	// Check Authorization header
 	if !validateBasicAuth(g) {
 		return
@@ -82,18 +88,29 @@ func SendMessage(g *gin.Context) {
 		return
 	}
 
-	g.JSON(http.StatusOK, gin.H{"response": "Received: " + jsonBody.Message})
+	if !IsNumeric(jsonBody.Number) {
+		g.JSON(http.StatusBadRequest, gin.H{"error": "not a number"})
+		return
+	}
+
+	err := sendMessageWA(client, fmt.Sprintf("%v@s.whatsapp.net", jsonBody.Number), jsonBody.Message)
+	if err != nil {
+		g.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	g.JSON(http.StatusOK, gin.H{"response": "Sent to " + jsonBody.Number + ": " + jsonBody.Message})
 }
 
-// @Summary Receive message
+// @Summary	Receive message
 // @Schemes
-// @Description Receive a message with the specified number
-// @Accept json
-// @Produce json
-// @Param number query string true "The number parameter"
-// @Success 200 {object} map[string]string
-// @Router /recvMessage [get]
-// @Security BasicAuth
+// @Description	Receive a message with the specified number
+// @Accept			json
+// @Produce		json
+// @Param			number	query		string	true	"The number parameter"
+// @Success		200		{object}	map[string]string
+// @Router			/recvMessage [get]
+// @Security		BasicAuth
 func RecvMessage(g *gin.Context) {
 	// Check Authorization header
 	if !validateBasicAuth(g) {
@@ -142,19 +159,24 @@ func validateCredentials(username, password string) bool {
 }
 
 func main() {
-	gin.SetMode(gin.ReleaseMode)
-
+	port := "45981"
 	// Load credentials from file
 	err := LoadCredentials("credentials.txt")
 	if err != nil {
 		panic("Failed to load credentials: " + err.Error())
 	}
 
+	gin.SetMode(gin.ReleaseMode)
+	clientWhatsapp := LoginWhatsapp()
+
 	r := gin.Default()
 	docs.SwaggerInfo.BasePath = "/api/v1"
 	v1 := r.Group("/api/v1")
-	v1.POST("/sendMessage", SendMessage)
+	v1.POST("/sendMessage", func(c *gin.Context) {
+		SendMessage(c, clientWhatsapp) // Call SendMessage with a test parameter
+	})
 	v1.GET("/recvMessage", RecvMessage)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
-	r.Run(":45981")
+	log.Println("Running on port " + port)
+	r.Run(":" + port)
 }

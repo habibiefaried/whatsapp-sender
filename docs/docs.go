@@ -69,7 +69,7 @@ const docTemplate = `{
                 "summary": "send message",
                 "parameters": [
                     {
-                        "description": "Input message",
+                        "description": "Input message and number",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -98,6 +98,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "message": {
+                    "type": "string"
+                },
+                "number": {
                     "type": "string"
                 }
             }
