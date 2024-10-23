@@ -46,16 +46,11 @@ func sendMessageWA(client *whatsmeow.Client, recipient string, messageText strin
 }
 
 func LoginWhatsapp() *whatsmeow.Client {
-	// |------------------------------------------------------------------------------------------------------|
-	// | NOTE: You must also import the appropriate DB connector, e.g. github.com/mattn/go-sqlite3 for SQLite |
-	// |------------------------------------------------------------------------------------------------------|
-
 	dbLog := waLog.Stdout("Database", "DEBUG", true)
 	container, err := sqlstore.New("sqlite3", "file:filestore.db?_foreign_keys=on", dbLog)
 	if err != nil {
 		panic(err)
 	}
-	// If you want multiple sessions, remember their JIDs and use .GetDevice(jid) or .GetAllDevices() instead.
 	deviceStore, err := container.GetFirstDevice()
 	if err != nil {
 		panic(err)
@@ -88,13 +83,6 @@ func LoginWhatsapp() *whatsmeow.Client {
 			panic(err)
 		}
 	}
-
-	// Listen to Ctrl+C (you can also do something else that prevents the program from exiting)
-	// c := make(chan os.Signal, 1)
-	// signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	// <-c
-
-	//
 
 	return client
 }

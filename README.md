@@ -1,2 +1,2 @@
 # whatsapp-sender
-Whatsapp Sender
+This whatsapp API expose endpoint to send message to any whatsapp number
