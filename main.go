@@ -1,103 +1,123 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
+	"encoding/base64"
+	"net/http"
+	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
-	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
-	"go.mau.fi/whatsmeow/store/sqlstore"
-	"go.mau.fi/whatsmeow/types"
-	"go.mau.fi/whatsmeow/types/events"
-	waLog "go.mau.fi/whatsmeow/util/log"
-	"google.golang.org/protobuf/proto"
+	"github.com/gin-gonic/gin"
+	docs "github.com/habibiefaried/whatsapp-sender/docs"
+	swaggerfiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-func eventHandler(evt interface{}) {
-	switch v := evt.(type) {
-	case *events.Message:
-		fmt.Println("Received a message!", v.Message.GetConversation())
-	}
+// MessageRequest represents the structure of the request body
+//
+//	@Description The message request body
+//	@Param message body MessageRequest true "Input message"
+//	@Example {"message": "Hello, World!"}
+type MessageRequest struct {
+	Message string `json:"message"`
 }
 
-// Function to send a message
-func sendMessage(client *whatsmeow.Client, recipient string, messageText string) {
-	// Create a message
-	message := &waProto.Message{
-		Conversation: proto.String(messageText),
+// @BasePath /api/v1
+
+// @securityDefinitions.basic BasicAuth
+// @Description Basic Auth
+// @Name Authorization
+// @In header
+// @Type basic
+// @Title Basic Auth
+
+// @Summary send message
+// @Schemes
+// @Description send message
+// @Accept json
+// @Produce json
+// @Param request body MessageRequest true "Input message"
+// @Success 200 {object} map[string]string
+// @Router /sendMessage [post]
+// @Security BasicAuth
+func SendMessage(g *gin.Context) {
+	// Check Authorization header
+	if !validateBasicAuth(g) {
+		return
 	}
 
-	// Convert the recipient number into the correct WhatsApp format (JID)
-	jid, err := types.ParseJID(recipient)
+	var jsonBody MessageRequest
+
+	if err := g.ShouldBindJSON(&jsonBody); err != nil {
+		g.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	g.JSON(http.StatusOK, gin.H{"response": "Received: " + jsonBody.Message})
+}
+
+// @Summary Receive message
+// @Schemes
+// @Description Receive a message with the specified number
+// @Accept json
+// @Produce json
+// @Param number query string true "The number parameter"
+// @Success 200 {object} map[string]string
+// @Router /recvMessage [get]
+// @Security BasicAuth
+func RecvMessage(g *gin.Context) {
+	// Check Authorization header
+	if !validateBasicAuth(g) {
+		return
+	}
+
+	number := g.Query("number") // Retrieve the "number" query parameter
+
+	if number == "" {
+		g.JSON(http.StatusBadRequest, gin.H{"error": "number parameter is required"})
+		return
+	}
+
+	g.JSON(http.StatusOK, gin.H{"message": "Received number: " + number})
+}
+
+// validateBasicAuth checks the Authorization header for Basic Auth
+func validateBasicAuth(g *gin.Context) bool {
+	authHeader := g.GetHeader("Authorization")
+	if authHeader == "" {
+		g.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header is missing"})
+		return false
+	}
+
+	// Extract the token from the header
+	token := strings.TrimPrefix(authHeader, "Basic ")
+	decoded, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
-		log.Println(err)
-		log.Fatalf("Invalid recipient JID: %s", recipient)
+		g.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Authorization header"})
+		return false
 	}
 
-	// Send the message
-	_, err = client.SendMessage(context.Background(), jid, message)
-	if err != nil {
-		log.Fatalf("Failed to send message: %v", err)
+	// Here you can implement your own logic to validate the username and password
+	credentials := strings.Split(string(decoded), ":")
+	if len(credentials) != 2 || !validateCredentials(credentials[0], credentials[1]) {
+		g.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return false
 	}
 
-	fmt.Println("Message sent successfully!")
+	return true
+}
+
+// validateCredentials is a placeholder for your authentication logic
+func validateCredentials(username, password string) bool {
+	// Replace this with your actual authentication logic
+	return username == "admin" && password == "password" // Example credentials
 }
 
 func main() {
-	// |------------------------------------------------------------------------------------------------------|
-	// | NOTE: You must also import the appropriate DB connector, e.g. github.com/mattn/go-sqlite3 for SQLite |
-	// |------------------------------------------------------------------------------------------------------|
-
-	dbLog := waLog.Stdout("Database", "DEBUG", true)
-	container, err := sqlstore.New("sqlite3", "file:filestore.db?_foreign_keys=on", dbLog)
-	if err != nil {
-		panic(err)
-	}
-	// If you want multiple sessions, remember their JIDs and use .GetDevice(jid) or .GetAllDevices() instead.
-	deviceStore, err := container.GetFirstDevice()
-	if err != nil {
-		panic(err)
-	}
-	clientLog := waLog.Stdout("Client", "DEBUG", true)
-	client := whatsmeow.NewClient(deviceStore, clientLog)
-	client.AddEventHandler(eventHandler)
-
-	if client.Store.ID == nil {
-		// No ID stored, new login
-		qrChan, _ := client.GetQRChannel(context.Background())
-		err = client.Connect()
-		if err != nil {
-			panic(err)
-		}
-		for evt := range qrChan {
-			if evt.Event == "code" {
-				// Render the QR code here
-				// e.g. qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
-				// or just manually `echo 2@... | qrencode -t ansiutf8` in a terminal
-				fmt.Println("QR code:", evt.Code)
-			} else {
-				fmt.Println("Login event:", evt.Event)
-			}
-		}
-	} else {
-		// Already logged in, just connect
-		err = client.Connect()
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	// sendMessage(client, "62<x>@s.whatsapp.net", "Hello from Go using WhatsMeow!")
-
-	// Listen to Ctrl+C (you can also do something else that prevents the program from exiting)
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	<-c
-
-	client.Disconnect()
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.Default()
+	docs.SwaggerInfo.BasePath = "/api/v1"
+	v1 := r.Group("/api/v1")
+	v1.POST("/sendMessage", SendMessage)
+	v1.GET("/recvMessage", RecvMessage)
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
+	r.Run(":45981")
 }
